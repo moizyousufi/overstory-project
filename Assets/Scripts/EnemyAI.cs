@@ -8,12 +8,14 @@ public class EnemyAI : MonoBehaviour
     [Header("AI Navigation Settings")]
     public Transform[] waypoints;
     private int currentWaypointIndex = 0;
-    private NavMeshAgent agent; 
+    private NavMeshAgent agent;
 
+    /*
     [Header("Spawning Settings")]
     public GameObject slimePrefab;
     private float spawnTimer = 0f;
     private float spawnInterval = 2.0f; // Maintains the faster spawn timing!
+    */
 
     [Header("Slowing Settings for Projectile Collision")]
     private float normalSpeed;
@@ -37,12 +39,14 @@ public class EnemyAI : MonoBehaviour
         }
 
         // Handle slime puddle generation timing
+        /*
         spawnTimer += Time.deltaTime;
         if (spawnTimer >= spawnInterval)
         {
             SpawnSlimePuddle();
             spawnTimer = 0f;
         }
+        */
     }
 
     void AdvanceToNextNodeIndex()
@@ -59,6 +63,7 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
+    /*
     void SpawnSlimePuddle()
     {
         if (slimePrefab != null)
@@ -67,6 +72,7 @@ public class EnemyAI : MonoBehaviour
             Debug.Log("Troll dropped a slime puddle!");
         }
     }
+    */
 
     public void ApplySlow(float slowPercentage, float duration)
     {
@@ -79,7 +85,7 @@ public class EnemyAI : MonoBehaviour
     private IEnumerator SlowRoutine(float slowPercentage, float duration)
     {
         isSlowed = true;
-        
+
         agent.speed = normalSpeed * slowPercentage;
         Debug.Log($"Enemy slowed! NavMesh speed is now: {agent.speed}");
 
