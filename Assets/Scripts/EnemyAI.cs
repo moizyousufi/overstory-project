@@ -50,15 +50,15 @@ public class EnemyAI : MonoBehaviour
 
     private AIState stateBeforeJump = AIState.Run;
 
-
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
         anim = GetComponentInChildren<Animator>();
         
-        agent.autoTraverseOffMeshLink = false;
+        // UPDATED: Enabled to allow AI to recognize and follow NavMesh Links
+        agent.autoTraverseOffMeshLink = true; 
+        
         normalSpeed = agent.speed;
-
         agent.obstacleAvoidanceType = ObstacleAvoidanceType.NoObstacleAvoidance; 
         agent.acceleration = 20f; 
 
@@ -67,16 +67,16 @@ public class EnemyAI : MonoBehaviour
             playerTransform = GameObject.FindWithTag("Player")?.transform;
         }
 
-
         trollAudio = GetComponent<TrollAudio>();
 
         InitializeRandomMatchRoute();
         TransitionToNextTarget();
-
     }
 
     void Update()
     {
+        // Traversal Logic: If the link is set to 'Jump' in the Inspector, this handles the leap.
+        // If the link is set to 'Walkable', this block is bypassed automatically.
         if (agent.isOnNavMesh && agent.isOnOffMeshLink && currentState != AIState.Jump && !isJumping)
         {
             stateBeforeJump = currentState;
@@ -92,28 +92,16 @@ public class EnemyAI : MonoBehaviour
 
         switch (currentState)
         {
-            case AIState.Idle:
-                HandleIdleState();
-                break;
-            case AIState.Run:
-                HandleRunState();
-                break;
-            case AIState.DropObstacle:
-                HandleDropObstacleState();
-                break;
-            case AIState.Jump:
+            case AIState.Idle: HandleIdleState(); break;
+            case AIState.Run: HandleRunState(); break;
+            case AIState.DropObstacle: HandleDropObstacleState(); break;
+            case AIState.Jump: 
                 if (anim) anim.SetBool("IsRunning", false);
                 ResetWaddleOrientation();
                 break;
-            case AIState.EscapeRun:
-                HandleEscapeRunState();
-                break;
-            case AIState.Escaped:
-                HandleEscapedState();
-                break;
-            case AIState.Laugh:
-                HandleLaughState();
-                break;
+            case AIState.EscapeRun: HandleEscapeRunState(); break;
+            case AIState.Escaped: HandleEscapedState(); break;
+            case AIState.Laugh: HandleLaughState(); break;
         }
     }
 
@@ -121,37 +109,23 @@ public class EnemyAI : MonoBehaviour
     {
         if (anim) anim.SetBool("IsRunning", false);
         ResetWaddleOrientation();
-
-        if (currentTargetNode != null)
-        {
-            currentState = AIState.Run;
-        }
+        if (currentTargetNode != null) currentState = AIState.Run;
     }
 
     private void HandleRunState()
     {
         if (isJumping || isDroppingObstacle) return;
-
         if (anim) anim.SetBool("IsRunning", true);
 
         if (playerTransform != null && Vector3.Distance(transform.position, playerTransform.position) < 5f)
         {
             agent.speed = isSlowed ? normalSpeed * 0.5f : normalSpeed * 1.3f; 
         }
-        else if (!isSlowed)
-        {
-            agent.speed = normalSpeed;
-        }
+        else if (!isSlowed) agent.speed = normalSpeed;
 
         ApplyProceduralWaddle();
-
-        float currentDynamicInterval = CalculateDynamicSpawnInterval();
-        
         spawnTimer += Time.deltaTime;
-        if (spawnTimer >= currentDynamicInterval)
-        {
-            currentState = AIState.DropObstacle;
-        }
+        if (spawnTimer >= CalculateDynamicSpawnInterval()) currentState = AIState.DropObstacle;
     }
 
     private void HandleDropObstacleState()
@@ -164,18 +138,9 @@ public class EnemyAI : MonoBehaviour
     {
         isDroppingObstacle = true;
         spawnTimer = 0f;
-
-        // FIXED: Replaced agent.isStopped physics freezing to keep the height tracking completely stable.
-        // The upper body animation layer takes over smoothly while the agent maintains stable footing.
-        if (anim != null) 
-        {
-            anim.SetTrigger("Attack"); 
-        }
-
+        if (anim != null) anim.SetTrigger("Attack"); 
         SpawnSlimePuddle();
-
         yield return new WaitForSeconds(1.2f);
-        
         isDroppingObstacle = false;
         currentState = (activeMatchRoute.Count == 0 && currentTargetNode == beanstalkDestination) ? AIState.EscapeRun : AIState.Run;
     }
@@ -183,54 +148,33 @@ public class EnemyAI : MonoBehaviour
     private void HandleEscapeRunState()
     {
         if (isJumping || isDroppingObstacle) return;
-
         if (anim) anim.SetBool("IsRunning", true);
-        
         ApplyProceduralWaddle();
-
-        float currentDynamicInterval = CalculateDynamicSpawnInterval();
         spawnTimer += Time.deltaTime;
-        if (spawnTimer >= currentDynamicInterval)
-        {
-            currentState = AIState.DropObstacle;
-        }
+        if (spawnTimer >= CalculateDynamicSpawnInterval()) currentState = AIState.DropObstacle;
     }
 
     private void HandleEscapedState()
     {
         if (agent != null && agent.isOnNavMesh) agent.isStopped = true;
         ResetWaddleOrientation();
-        
         TriggerVictoryState();
-        Debug.Log("<color=red>[GAME OVER]</color> Troll reached the destination! Player loses the game.");
     }
 
     private void HandleLaughState()
     {
         if (agent != null && agent.isOnNavMesh) agent.isStopped = true;
-        if (anim) 
-        {
-            anim.SetBool("IsRunning", false);
-            anim.SetTrigger("Laugh");
-        }
+        if (anim) { anim.SetBool("IsRunning", false); anim.SetTrigger("Laugh"); }
         ResetWaddleOrientation();
     }
 
     private void InitializeRandomMatchRoute()
     {
-        if (waypoints == null || waypoints.Length < 3)
-        {
-            Debug.LogError("[Troll AI Config] Please assign your 6 nodes to the waypoints array in the inspector!");
-            return;
-        }
-
         List<Transform> temporaryPool = new List<Transform>(waypoints);
         activeMatchRoute.Clear();
-
         for (int i = 0; i < 3; i++)
         {
             if (temporaryPool.Count == 0) break;
-
             int randomIndex = Random.Range(0, temporaryPool.Count);
             activeMatchRoute.Enqueue(temporaryPool[randomIndex]);
             temporaryPool.RemoveAt(randomIndex); 
@@ -240,17 +184,12 @@ public class EnemyAI : MonoBehaviour
     private void TransitionToNextTarget()
     {
         if (agent == null || !agent.isOnNavMesh) return;
-
         Transform nextNode = null;
-        if (activeMatchRoute.Count > 0)
-        {
-            nextNode = activeMatchRoute.Dequeue();
-        }
+        if (activeMatchRoute.Count > 0) nextNode = activeMatchRoute.Dequeue();
         else if (currentTargetNode != beanstalkDestination)
         {
             currentState = AIState.EscapeRun;
             nextNode = beanstalkDestination;
-            
             normalSpeed *= escapeSpeedMultiplier;
             agent.speed = normalSpeed;
             agent.acceleration = 24f;
@@ -286,71 +225,30 @@ public class EnemyAI : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (currentTargetNode == null) return;
-
-        if (other.transform == currentTargetNode)
+        if (currentTargetNode != null && other.transform == currentTargetNode)
         {
-            if (currentState == AIState.EscapeRun && currentTargetNode == beanstalkDestination)
-            {
-                currentState = AIState.Escaped;
-            }
-            else
-            {
-                TransitionToNextTarget();
-            }
+            if (currentState == AIState.EscapeRun && currentTargetNode == beanstalkDestination) currentState = AIState.Escaped;
+            else TransitionToNextTarget();
         }
     }
 
     private float CalculateDynamicSpawnInterval()
     {
         if (playerTransform == null) return spawnInterval;
-
         float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
-
-        if (distanceToPlayer >= proximityPanicDistance)
-        {
-            return spawnInterval; 
-        }
-        
-        float normDistance = distanceToPlayer / proximityPanicDistance; 
-        float dynamicallyScaledInterval = Mathf.Lerp(minimumSpawnInterval, spawnInterval, normDistance);
-        
-        return Mathf.Clamp(dynamicallyScaledInterval, minimumSpawnInterval, spawnInterval);
+        float normDistance = Mathf.Clamp01(distanceToPlayer / proximityPanicDistance);
+        return Mathf.Lerp(minimumSpawnInterval, spawnInterval, normDistance);
     }
 
     void SpawnSlimePuddle()
     {
         if (slimePrefab != null)
         {
-            Vector3 spawnPosition = dropPoint != null ? dropPoint.position : (transform.position - transform.forward * 2.5f);
-            spawnPosition.y = transform.position.y - 0.1f; 
-            
-            GameObject puddle = Instantiate(slimePrefab, spawnPosition, Quaternion.identity);
-            if (puddle != null)
-            {
-
-                Debug.Log($"<color=green>[SPAWNER SUCCESS]</color> Instantiated {puddle.name} at {spawnPosition}");
-
-                // Play slime drop sound
-                if (trollAudio != null)
-                {
-                    trollAudio.PlaySlimeDrop();
-                }
-
-                puddle.transform.localScale = slimePrefab.transform.localScale;
-
-                Collider slimeCollider = puddle.GetComponent<Collider>();
-                if (slimeCollider != null)
-                {
-                    slimeCollider.isTrigger = false; 
-                }
-
-                if (puddle.GetComponent<SlimeTrigger>() == null)
-                {
-                    puddle.AddComponent<SlimeTrigger>();
-
-                }
-            }
+            Vector3 pos = dropPoint != null ? dropPoint.position : (transform.position - transform.forward * 2.5f);
+            pos.y = transform.position.y - 0.1f; 
+            GameObject puddle = Instantiate(slimePrefab, pos, Quaternion.identity);
+            if (trollAudio != null) trollAudio.PlaySlimeDrop();
+            if (puddle.GetComponent<SlimeTrigger>() == null) puddle.AddComponent<SlimeTrigger>();
         }
     }
 
@@ -358,7 +256,6 @@ public class EnemyAI : MonoBehaviour
     {
         isJumping = true;
         agent.isStopped = true;
-
         if (anim) anim.SetBool("IsRunning", false);
         ResetWaddleOrientation();
 
@@ -367,96 +264,28 @@ public class EnemyAI : MonoBehaviour
         Vector3 endPos = data.endPos;
 
         float jumpDuration = 1.6f; 
-        float timeElapsed = 0f;
-
-        while (timeElapsed < jumpDuration)
+        for (float t = 0; t < jumpDuration; t += Time.deltaTime)
         {
-            timeElapsed += Time.deltaTime;
-            float t = timeElapsed / jumpDuration;
-
-            float smoothT = Mathf.SmoothStep(0f, 1f, t);
-            Vector3 currentPos = Vector3.Lerp(startPos, endPos, smoothT);
-            
-            float heightArc = Mathf.Sin(t * Mathf.PI);
-            currentPos.y += heightArc * 3.2f; 
-
-            transform.position = currentPos;
-
-            if (anim)
-            {
-                float slowedT = t * 0.7f; 
-                anim.Play("jumping", 0, Mathf.Clamp01(slowedT)); 
-            }
-
+            float normalizedT = t / jumpDuration;
+            transform.position = Vector3.Lerp(startPos, endPos, Mathf.SmoothStep(0, 1, normalizedT)) + Vector3.up * (Mathf.Sin(normalizedT * Mathf.PI) * 3.2f);
+            if (anim) anim.Play("jumping", 0, Mathf.Clamp01(normalizedT * 0.7f));
             yield return null;
         }
-
         transform.position = endPos;
-
-        if (agent != null && agent.isOnNavMesh)
-        {
-            agent.CompleteOffMeshLink();
-            agent.isStopped = false;
-        }
-
-        if (anim)
-        {
-            anim.SetBool("IsRunning", true);
-            anim.CrossFade("running", 0.12f); 
-        }
-        
+        agent.CompleteOffMeshLink();
+        agent.isStopped = false;
         isJumping = false;
         currentState = stateBeforeJump;
-
-        if (currentTargetNode != null && agent.isOnNavMesh)
-        {
-            agent.SetDestination(currentTargetNode.position);
-        }
     }
 
     private void ApplyProceduralWaddle()
     {
         if (visualMeshTransform != null && agent.velocity.sqrMagnitude > 0.1f)
-        {
-            float waddleRoll = Mathf.Sin(Time.time * waddleSpeed) * tiltIntensity;
-            visualMeshTransform.localRotation = Quaternion.Euler(0, 0, waddleRoll);
-        }
+            visualMeshTransform.localRotation = Quaternion.Euler(0, 0, Mathf.Sin(Time.time * waddleSpeed) * tiltIntensity);
     }
 
-    private void ResetWaddleOrientation()
-    {
-        if (visualMeshTransform != null)
-        {
-            visualMeshTransform.localRotation = Quaternion.identity;
-        }
-    }
-
-    public void TriggerVictoryState()
-    {
-        currentState = AIState.Laugh;
-    }
-
-    public void ApplySlow(float slowPercentage, float duration)
-    {
-        if (!isSlowed && agent != null)
-        {
-            StartCoroutine(SlowRoutine(slowPercentage, duration));
-        }
-
-        // Play troll hit sound when the troll gets hit
-        if (trollAudio != null)
-        {
-            trollAudio.PlayHit();
-        }
-
-    }
-
-    private IEnumerator SlowRoutine(float slowPercentage, float duration)
-    {
-        isSlowed = true;
-        agent.speed = normalSpeed * slowPercentage;
-        yield return new WaitForSeconds(duration);
-        agent.speed = normalSpeed;
-        isSlowed = false;
-    }
+    private void ResetWaddleOrientation() { if (visualMeshTransform != null) visualMeshTransform.localRotation = Quaternion.identity; }
+    public void TriggerVictoryState() => currentState = AIState.Laugh;
+    public void ApplySlow(float s, float d) => StartCoroutine(SlowRoutine(s, d));
+    private IEnumerator SlowRoutine(float s, float d) { isSlowed = true; agent.speed = normalSpeed * s; yield return new WaitForSeconds(d); agent.speed = normalSpeed; isSlowed = false; }
 }
